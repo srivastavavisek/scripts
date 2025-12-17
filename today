@@ -1,0 +1,39 @@
+
+#!/usr/bin/env bash
+# Fancy Welcome Screen with system info, calendar, and optional temporal info
+
+clear
+
+# Colors
+BLUE='\e[1;34m'
+GREEN='\e[1;32m'
+YELLOW='\e[1;33m'
+RED='\e[1;31m'
+NC='\e[0m' # No Color
+
+# Greeting
+printf "${BLUE}Hello, %s! Today is %s${NC}\n" "$USER" "$(date '+%A, %d %B %Y')"
+
+# Calendar with today highlighted
+echo -e "${GREEN}Calendar:${NC}"
+cal | awk -v d=$(date +%e) '{
+    for(i=1;i<=NF;i++){
+        if($i==d) $i="\033[1;31m"$i"\033[0m"
+    }
+    print
+}'
+
+# System info
+echo -e "\n${YELLOW}System Info:${NC}"
+printf "Uptime: %s\n" "$(uptime -p)"
+printf "Load average: %s\n" "$(uptime | awk -F 'load average:' '{print $2}')"
+printf "Memory Usage: %s\n" "$(free -h | awk '/Mem:/ {print $3 "/" $2}')"
+printf "Disk Usage: %s\n" "$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 " used)"}')"
+
+# Optional: include temporal info
+if command -v temporal-info &> /dev/null; then
+    echo -e "\n${BLUE}Temporal Info (Today):${NC}"
+    temporal-info
+fi
+
+echo

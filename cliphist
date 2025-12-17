@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+histfile="$HOME/.cache/cliphist"
+placeholder="<\n>"
+
+

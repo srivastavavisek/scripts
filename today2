@@ -1,0 +1,204 @@
+
+#!/usr/bin/env bash
+# welcome — tasteful login welcome/dashboard
+# Put in ~/.local/bin/welcome and make executable.
+# Runs portably: checks for optional tools (figlet, sensors, upower, curl, temporal-info).
+
+set -euo pipefail
+
+# -----------------------
+# Helpers
+# -----------------------
+has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# colors (use tput if available)
+if has_cmd tput; then
+  TPUT=tput
+  BOLD="$($TPUT bold)"
+  RESET="$($TPUT sgr0)"
+  BLUE="$($TPUT setaf 4)"
+  GREEN="$($TPUT setaf 2)"
+  YELLOW="$($TPUT setaf 3)"
+  RED="$($TPUT setaf 1)"
+  CYAN="$($TPUT setaf 6)"
+else
+  BOLD='\e[1m'; RESET='\e[0m'
+  BLUE='\e[1;34m'; GREEN='\e[1;32m'; YELLOW='\e[1;33m'
+  RED='\e[1;31m'; CYAN='\e[1;36m'
+fi
+
+# Print a section header inside the box
+section() {
+  printf "%s%s%s\n" "${BOLD}${CYAN}" "$1" "${RESET}"
+}
+
+# -----------------------
+# Greeting / ASCII banner
+# -----------------------
+clear
+
+USER_DISPLAY="$USER"
+if has_cmd figlet; then
+  # small figlet banner if available
+  figlet -f small -w 200 "$USER_DISPLAY" 2>/dev/null | sed "s/^/${BLUE}/; s/$/${RESET}/"
+else
+  printf "%s%sHello, %s!%s\n" "$BOLD" "$BLUE" "$USER_DISPLAY" "$RESET"
+fi
+
+# -----------------------
+# Header line: date/time/timezone
+# -----------------------
+DATE_STR="$(date '+%A, %d %B %Y  •  %H:%M:%S %Z')"
+printf "%s\n\n" "${YELLOW}${DATE_STR}${RESET}"
+
+# -----------------------
+# Calendar (highlight today)
+# -----------------------
+section "Calendar"
+if has_cmd cal; then
+  # highlight today's date in calendar
+  TODAY=$(date +%e) # space-padded day
+  cal | awk -v d="$TODAY" '{
+    for(i=1;i<=NF;i++){
+      gsub(/^ +| +$/,"",$i)
+      if($i==d) $i="\033[1;31m"$i"\033[0m"
+    }
+    print
+  }'
+else
+  echo "cal not found"
+fi
+echo
+
+# -----------------------
+# System info
+# -----------------------
+section "System"
+# uptime (pretty)
+if has_cmd uptime; then
+  printf "Uptime: %s\n" "$(uptime -p 2>/dev/null || uptime)"
+fi
+
+# load
+if has_cmd awk && [ -r /proc/loadavg ]; then
+  read -r one five fifteen rest < /proc/loadavg
+  printf "Load: %s (1m) / %s (5m) / %s (15m)\n" "$one" "$five" "$fifteen"
+else
+  printf "Load: %s\n" "$(uptime | sed -n 's/.*load average: //p')"
+fi
+
+# memory (free -h fallback)
+if has_cmd free; then
+  mem_used="$(free -h | awk '/^Mem:/ {print $3 " / " $2}')"
+  printf "Memory: %s\n" "$mem_used"
+elif [ -r /proc/meminfo ]; then
+  MemTotal=$(awk '/MemTotal/ {print int($2/1024)"M"}' /proc/meminfo)
+  MemAvailable=$(awk '/MemAvailable/ {print int($2/1024)"M"}' /proc/meminfo)
+  printf "Memory (approx): %s used of %s\n" "$(( ${MemTotal%M} - ${MemAvailable%M} ))M" "$MemTotal"
+fi
+
+# disk root
+if has_cmd df; then
+  root_usage=$(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 " used)"}')
+  printf "Root disk: %s\n" "$root_usage"
+fi
+
+# cpu temp (sensors)
+if has_cmd sensors; then
+  sensors | awk '/^Core|^Package|^temp/ {print "CPU " $0}' | sed 's/^\s*//'
+else
+  # try Linux sysfs
+  if [ -r /sys/class/thermal/thermal_zone0/temp ]; then
+    t=$(cat /sys/class/thermal/thermal_zone0/temp)
+    t_c=$(awk "BEGIN {printf \"%.1f\", $t/1000}")
+    printf "CPU temp (sysfs): %s°C\n" "$t_c"
+  fi
+fi
+echo
+
+# -----------------------
+# Battery (if present)
+# -----------------------
+if has_cmd upower; then
+  BAT="$(upower -e | grep -E 'BAT|battery' | head -n1 || true)"
+  if [ -n "$BAT" ]; then
+    upower -i "$BAT" | awk -F: '/state|percentage|time to/ {gsub(/^ +| +$/,"",$2); print $1 ": " $2}'
+    echo
+  fi
+else
+  # sysfs method
+  if [ -d /sys/class/power_supply ]; then
+    for d in /sys/class/power_supply/*/; do
+      [ -e "${d}capacity" ] || continue
+      name=$(basename "$d")
+      state=$(cat "${d}status" 2>/dev/null || echo "N/A")
+      cap=$(cat "${d}capacity" 2>/dev/null || echo "N/A")
+      printf "Battery (%s): %s — %s%%\n" "$name" "$state" "$cap"
+    done
+    echo
+  fi
+fi
+
+# -----------------------
+# Network / IP
+# -----------------------
+section "Network"
+if has_cmd ip; then
+  ipaddr=$(ip -4 addr show scope global | awk '/inet /{print $2; exit}')
+  printf "Primary IP: %s\n" "${ipaddr:-(none)}"
+elif has_cmd hostname; then
+  printf "IP(s): %s\n" "$(hostname -I 2>/dev/null || hostname -i 2>/dev/null || echo none)"
+fi
+# gateway
+if has_cmd ip; then
+  gw=$(ip route | awk '/default/ {print $3; exit}')
+  printf "Gateway: %s\n" "${gw:-(none)}"
+fi
+echo
+
+# -----------------------
+# Git context if inside a repo
+# -----------------------
+if has_cmd git && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  section "Git"
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(detached)")
+  status=$(git status --porcelain --untracked-files=no 2>/dev/null | wc -l)
+  printf "Branch: %s  |  Changed files: %s\n\n" "$branch" "$status"
+fi
+
+# -----------------------
+# Temporal info (if available)
+# -----------------------
+if has_cmd temporal-info; then
+  section "Temporal"
+  temporal-info | sed 's/^/  /'
+  echo
+fi
+
+# -----------------------
+# Optional quick weather (wttr.in) — quiet fallback if curl available
+# -----------------------
+if has_cmd curl; then
+  if [ -t 1 ]; then # interactive
+    section "Weather (wttr.in brief)"
+    curl -s 'https://wttr.in/?format=1' | sed 's/^/  /'
+    echo
+  fi
+fi
+
+# -----------------------
+# Small tip or random quote (fun)
+# -----------------------
+section "Tip"
+tips=(
+  "Use 'rg' (ripgrep) + fzf to jump to notes fast."
+  "Press Ctrl-Shift-T to open a new terminal in many terminals."
+  "Remember to commit small, frequent changes."
+  "Try: temporal-info month for a monthly summary."
+)
+printf "  %s\n\n" "${tips[$((RANDOM % ${#tips[@]}))]}"
+
+# -----------------------
+# Final newline
+# -----------------------
+echo "${RESET}"

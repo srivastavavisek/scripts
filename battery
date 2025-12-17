@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# AC power status block
+AC_PATH="/sys/class/power_supply/AC/online"
+
+if [[ -f "$AC_PATH" ]]; then
+    AC_STATUS=$(cat "$AC_PATH")
+    if [[ "$AC_STATUS" == "1" ]]; then
+        echo ""
+    else
+        echo "󱉝 UNPLUGGED"
+        exit 33
+    fi
+fi
