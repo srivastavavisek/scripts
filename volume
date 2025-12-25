@@ -5,12 +5,12 @@ if [ "$BLOCK_BUTTON" -eq 1 ]; then
 fi
 
 MODE="$1"
-# calling for display
+calling for display
 if [[ "$MODE" == "num" ]]; then
     pactl get-sink-volume @DEFAULT_SINK@ | awk '{print $5}' | head -n1
 elif [[ "$MODE" == "mute" ]]; then
     MUTED=$(pactl get-sink-mute @DEFAULT_SINK@ | awk '{print $2}')
-    [[ "$MUTED" == "yes" ]] && echo "<span foreground='red'> </span>" || echo " "
+    [[ "$MUTED" == "yes" ]] && echo "<span foreground='red' rise='1pt' size='x-large'> </span>" || echo "<span rise='1pt' size='x-large'> </span>"
 
 # calling for key-action
 elif [[ "$MODE" == "up" ]]; then

@@ -6,15 +6,16 @@ if [[ $(cat /sys/class/net/$device/operstate) == "up" ]]; then  # doesn’t guar
     if [[ -d "/sys/class/net/${device}/wireless" ]]; then  
         # this tells you the interface is actually a Wi-Fi interface
         quality=$(grep ${device} /proc/net/wireless | awk '{ print int($3 * 100 / 70) }')
-        echo "${quality}%"
+        echo "<span rise='2pt' size='x-large'>󰤥 </span><span rise='3pt'>${quality}%</span>"
         if [[ "${quality}" -le 20 ]]; then
             exit 33
         fi
     else
         # Ethernet
-        echo "UP"
+        echo "<span rise='2pt' size='large'>󰤥</span> <span rise='3pt' >UP</span>"
     fi
 else
-    echo "DOWN"
+    echo "<span rise='2pt' size='large'>󰤥</span> <span rise='3pt'>DOWN</span>"
     exit 33
 fi
+
