@@ -1,1 +1,2 @@
 # scripts
+scripts for arch
